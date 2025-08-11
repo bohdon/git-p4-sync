@@ -2,6 +2,17 @@
 
 Util for syncing P4 submitted changelists into git commits.
 
+## Features
+
+- Creates a git commit for each P4 changelist that affects certain files
+- Map multiple paths from P4 depot to the git repo, and only commit for relevant changelists
+- Currently submits as the default git user (no version of p4 user to git author)
+- Commits with the original date and time of the P4 changelist
+- Includes CL in the git description (use `--no-cl` to omit)
+
+> Note: For each CL, the mapped paths are fully mirrored from p4 -> git (rather than applying each CL as a patch),
+> which means the first commit may include extra changes if P4 and git are not already synced.
+
 ## Usage
 
 ```shell
