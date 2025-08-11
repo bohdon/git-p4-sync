@@ -1,0 +1,14 @@
+[paths]
+# map of depot paths to relative paths within the current git repo
+"//my_depot/main/my_project/..." = "my_project"
+
+[source]
+# the path to the p4 workspace where the files can be synced
+# requires a .p4config or P4CLIENT be set
+root = "C:/path/to/MyDepot"
+
+[destination]
+# paths within the git repo that should be ignored / not mirrored
+ignore_patterns = [
+    "my_project/my_ignored_dir/*",
+]
