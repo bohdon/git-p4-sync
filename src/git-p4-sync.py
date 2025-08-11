@@ -248,13 +248,14 @@ class GitP4Sync(object):
         env = os.environ.copy()
         env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = str(date)
         git_desc = description if self.no_cl else f"{description}\nCL {cl}"
-        result: CompletedProcess = self.git_run_env(env, "commit", "-m", git_desc)
-        if result.returncode != 0:
-            LOG.error(f"git: {result.stderr.decode().strip()}")
-            LOG.error(f"git: {result.stdout.decode().strip()}")
-            raise RuntimeError(f"Failed to commit changes from CL {cl}, no changes?")
-        else:
-            LOG.debug(f"git: {result.stdout.decode().strip()}")
+        result: CompletedProcess | None = self.git_run_env(env, "commit", "-m", git_desc)
+        if result is not None:
+            if result.returncode != 0:
+                LOG.error(f"git: {result.stderr.decode().strip()}")
+                LOG.error(f"git: {result.stdout.decode().strip()}")
+                raise RuntimeError(f"Failed to commit changes from CL {cl}, no changes?")
+            else:
+                LOG.debug(f"git: {result.stdout.decode().strip()}")
 
         if not self.dry_run:
             LOG.info(f"Committed CL {cl}: {description.split('\n')[0]}")
