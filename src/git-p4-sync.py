@@ -186,6 +186,7 @@ class GitP4Sync(object):
                     if self.verbose:
                         LOG.debug(f"rm    {dst_file.relative_to(dst_root_resolve)}")
                     if not self.dry_run:
+                        dst_file.chmod(dst_file.stat().st_mode | stat.S_IWRITE)
                         dst_file.unlink()
 
             # delete empty dirs
