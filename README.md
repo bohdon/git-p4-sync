@@ -47,7 +47,15 @@ ignore_patterns = [
 # start in the root of the git repo
 cd /path/to/git/repo
 # use -r to specify first,last changelist to sync and commit, -n to dry-run
-python git-p4-sync.py -r 123,456 -n
+python git-p4-sync.py sync -r 123,456 -n
 ```
 
 - Run with `--help` for more info
+
+## Reverse Sync
+
+- To sync the current state of git workspace into p4, and recocile, run with the `reverse` command:
+
+```shell
+python git-p4-sync.py reverse -n
+```
