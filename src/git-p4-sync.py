@@ -167,11 +167,12 @@ class GitP4Sync(object):
         self.dry_run = dry_run
         self.verbose = verbose
 
-        self.config = tomllib.loads(open(config_path).read())
+        self.config_path = config_path
+        self.config = tomllib.loads(open(self.config_path).read())
         # the root path of the p4 workspace
         self.src_root = Path(self.config["source"]["root"]).resolve()
         # the root path of the git repo
-        self.dst_root = Path(os.path.dirname(config_path)).resolve()
+        self.dst_root = Path(os.path.dirname(self.config_path)).resolve()
         self.path_map = self.config["paths"]
         self.ignore = self.config["destination"]["ignore"]
         LOG.debug(self.config)
@@ -185,6 +186,10 @@ class GitP4Sync(object):
 
         # resolve p4 depot files `p4 where`, and resolve relative git repo paths to absolute
         self.resolved_path_map = self.resolve_paths(self.path_map)
+
+    @property
+    def config_cache_path(self):
+        return Path(self.config_path).parent / ".gitp4sync.state"
 
     def _p4_run(self, dry_run, *args):
         LOG.debug(f"P4: p4 {' '.join(args)}")
@@ -297,6 +302,9 @@ class GitP4Sync(object):
         if not self.dry_run:
             LOG.info(f"Committed CL {cl}: {description.split('\n')[0]}")
 
+        if not self.dry_run:
+            self.save_latest_sync_cl(cl)
+
     def reverse(self):
         """
         Copy the current git workspace to p4. Requires manually checking out commits in git first.
@@ -310,6 +318,41 @@ class GitP4Sync(object):
         depot_paths = self.path_map.keys()
         self.p4_run("reconcile", *depot_paths)
 
+    def get_auto_range(self) -> str | None:
+        """
+        Automatically determine and return the sync range, checking for latest synced CL from
+        a cache config file and getting the latest change from the p4 server.
+        """
+        head_cl_info = self.p4_run_safe("changes", "-m1")
+        if not head_cl_info:
+            LOG.error(f"Failed to get latest change: {self.p4}")
+            return None
+
+        last_sync_cl = 0
+        cache_config_path = Path(self.config_path).parent / ".gitp4sync.state"
+        if cache_config_path.exists():
+            cache_config = tomllib.loads(open(cache_config_path).read())
+            last_sync_cl = int(cache_config.get("last_sync_cl", 0))
+            LOG.debug(f"Last synced CL: {last_sync_cl}")
+
+        head_cl = int(head_cl_info[0]["change"])
+        LOG.debug(f"Head CL: {head_cl}")
+
+        if head_cl <= last_sync_cl:
+            LOG.info("No new CLs to sync")
+            return None
+        return f"{last_sync_cl + 1},{head_cl}"
+
+    def save_latest_sync_cl(self, cl: str):
+        """
+        Save the latest synced cl to a cache file for easy auto-syncing future CLs.
+        """
+        cache_config_path = Path(self.config_path).parent / ".gitp4sync.state"
+        LOG.debug(f"Saving last_sync_cl: {cl} to {cache_config_path}")
+        content = f"last_sync_cl={cl}\n"
+        with open(cache_config_path, "w") as f:
+            f.write(content)
+
 
 @click.group()
 def cli():
@@ -317,8 +360,8 @@ def cli():
 
 
 @cli.command(name="sync")
-@click.option("-c", "--config", "config_path", default="git-p4-sync.toml", help="Path to config file")
-@click.option("-r", "--cl-range", "cl_range", required=True, help="Range of changelists (e.g. 123,456)")
+@click.option("-c", "--config", "config_path", default=".gitp4sync", help="Path to config file")
+@click.option("-r", "--cl-range", "cl_range", help="Range of changelists (e.g. 123,456)")
 @click.option("-n", "--dry-run", "dry_run", is_flag=True, help="Preview the operation without doing anything")
 @click.option("-v", "--verbose", is_flag=True, help="Output verbose information")
 @click.option("--no-cl", is_flag=True, help="Don't include the CL in the git commit description")
@@ -334,12 +377,20 @@ def _sync(config_path: str, cl_range: str, dry_run: bool, verbose: bool, no_cl: 
         sys.exit(1)
 
     sync_util = GitP4Sync(config_path, no_cl=no_cl, dry_run=dry_run, verbose=verbose)
+
+    if not cl_range:
+        auto_cl_range = sync_util.get_auto_range()
+        if auto_cl_range is None:
+            sys.exit(1)
+        cl_range = auto_cl_range
+        LOG.info(f"Using sync range range: {cl_range}")
+
     first_cl, last_cl = cl_range.split(",")
     sync_util.sync_range(first_cl, last_cl)
 
 
 @cli.command(name="reverse")
-@click.option("-c", "--config", "config_path", default="git-p4-sync.toml", help="Path to config file")
+@click.option("-c", "--config", "config_path", default=".gitp4sync", help="Path to config file")
 @click.option("-n", "--dry-run", "dry_run", is_flag=True, help="Preview the operation without doing anything")
 @click.option("-v", "--verbose", is_flag=True, help="Output verbose information")
 def _reverse(config_path: str, dry_run: bool, verbose: bool):
