@@ -237,6 +237,19 @@ class GitP4Sync(object):
             syncer.ignore = self.ignore
             syncer.run()
 
+    def list_range(self, first_cl: str, last_cl: str):
+        LOG.info(f"Finding affected CLs in range {first_cl},{last_cl}...")
+
+        view_fmt = " ".join([f"{path}@{{cl}}" for path in self.path_map.keys()])
+        view_paths = view_fmt.format(cl=f"{first_cl},{last_cl}").split(" ")
+        changes = self.p4_run_safe(f"changes", "-L", *view_paths)
+        if not changes:
+            LOG.info(f"No changes to mapped paths in range @{first_cl},{last_cl}")
+            return
+
+        for c in changes:
+            LOG.info(f"CL {c['change']} [{c['user']}]: {c['desc'].split('\n')[0]}")
+
     def sync_range(self, first_cl: str, last_cl: str):
         """
         Sync a range of submits from P4 into git
@@ -357,6 +370,30 @@ class GitP4Sync(object):
 @click.group()
 def cli():
     pass
+
+
+@cli.command(name="list")
+@click.option("-c", "--config", "config_path", default=".gitp4sync", help="Path to config file")
+@click.option("-r", "--cl-range", "cl_range", help="Range of changelists (e.g. 123,456)")
+def _list(config_path: str, cl_range: str):
+    """
+    List all CLs that affect the mapped paths.
+    """
+    if not os.path.isfile(config_path):
+        LOG.error(f"Config file not found: {config_path}")
+        sys.exit(1)
+
+    sync_util = GitP4Sync(config_path)
+
+    if not cl_range:
+        auto_cl_range = sync_util.get_auto_range()
+        if auto_cl_range is None:
+            sys.exit(1)
+        cl_range = auto_cl_range
+        LOG.info(f"Using sync range range: {cl_range}")
+
+    first_cl, last_cl = cl_range.split(",")
+    sync_util.list_range(first_cl, last_cl)
 
 
 @cli.command(name="sync")
