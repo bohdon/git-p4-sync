@@ -15,6 +15,7 @@ import sys
 import tomllib
 from pathlib import Path
 from subprocess import CompletedProcess
+from typing import cast
 
 import P4
 import click
@@ -260,14 +261,14 @@ class GitP4Sync(object):
 
         view_fmt = " ".join([f"{path}@{{cl}}" for path in self.path_map.keys()])
         view_paths = view_fmt.format(cl=f"{first_cl},{last_cl}").split(" ")
-        changes = self.p4_run_safe(f"changes", *view_paths)
+        changes = cast(list, self.p4_run_safe(f"changes", *view_paths))
         if not changes:
             LOG.info(f"No changes to mapped paths in range @{first_cl},{last_cl}")
             return
 
-        # import pprint
-        # pprint.pprint(changes)
-        cl_list = sorted(set([c["change"] for c in changes]))
+        # sort by CL numerically
+        cl_list = sorted(set([str(c["change"]) for c in changes]), key=int)
+        LOG.info(f"Syncing CLs: {', '.join(cl_list)}")
 
         # unstage any leftover work
         self.git_run("reset", "HEAD")
@@ -280,7 +281,7 @@ class GitP4Sync(object):
         description = describe["desc"].strip()
         date = int(describe["time"])
 
-        LOG.debug(f"Syncing CL {cl}: {description.split('\n')[0]}")
+        LOG.info(f"Syncing CL {cl}: {description.split('\n')[0]}")
         # print(describe)
 
         # sync all paths to this CL
